@@ -613,13 +613,7 @@
             <option value="KITG">📌 KITG (Kitob 2)</option>
         </select>
         <select id="yearSelect">
-            <option value="2026">2026 (Joriy)</option>
-            <option value="2025">2025</option>
-            <option value="2024">2024</option>
-            <option value="2023">2023</option>
-            <option value="2022">2022</option>
-            <option value="2021">2021</option>
-            <option value="2020">2020</option>
+            <!-- JavaScript tomonidan dinamik to'ldiriladi -->
         </select>
         <select id="monthSelect">
             <option value="">Barcha oylar</option>
@@ -1459,26 +1453,27 @@
         window.onload = () => {
             initGlobe();
             const now = new Date();
-            // Bugungi sana avtomatik tanlanadi
             const curYear  = now.getFullYear();
             const curMonth = now.getMonth() + 1; // 1-12
             const curDay   = now.getDate();
 
-            const yearSel  = document.getElementById('yearSelect');
-            const monthSel = document.getElementById('monthSelect');
-
-            // Yil - agar topilmasa eng oxirgi optionni tanlaydi
-            if ([...yearSel.options].some(o => o.value == curYear)) {
-                yearSel.value = String(curYear);
-            } else {
-                yearSel.selectedIndex = yearSel.options.length - 1;
+            // ===== Yillar ro'yxatini dinamik qurish (2020 - hozirgi yil) =====
+            const yearSel = document.getElementById('yearSelect');
+            yearSel.innerHTML = '';
+            for (let y = curYear; y >= 2020; y--) {
+                const opt = document.createElement('option');
+                opt.value = y;
+                opt.textContent = y === curYear ? `${y} (Joriy)` : String(y);
+                yearSel.appendChild(opt);
             }
+            yearSel.value = String(curYear);
 
-            // Oy
+            // ===== Oy =====
+            const monthSel = document.getElementById('monthSelect');
             monthSel.value = String(curMonth);
-            updateDays();
 
-            // Kun
+            // ===== Kunlar ro'yxatini yangilash va bugungi kunni tanlash =====
+            updateDays();
             const daySel = document.getElementById('daySelect');
             if ([...daySel.options].some(o => o.value == curDay)) {
                 daySel.value = String(curDay);

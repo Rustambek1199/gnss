@@ -142,15 +142,23 @@ class GNSSService:
                     new_df = pd.DataFrame(new_rows)
                     combined = pd.concat([self.df_global, new_df]).drop_duplicates(subset=['Station', 'datetime'], keep='last')
                     self.df_global = combined.sort_values(by=['Station', 'datetime']).reset_index(drop=True)
-                    self.df_global['dPWV'] = self.df_global.groupby('Station')['PWV'].diff().fillna(0)
-                    self.df_global['dP'] = self.df_global.groupby('Station')['Pressure'].diff().fillna(0)
-                    self.df_global['dT'] = self.df_global.groupby('Station')['Temp'].diff().fillna(0)
+                    self.df_global['dPWV'] = self.df_global.groupby('Station')['PWV'].diff().fillna(0).round(2)
+                    self.df_global['dP'] = self.df_global.groupby('Station')['Pressure'].diff().fillna(0).round(2)
+                    self.df_global['dT'] = self.df_global.groupby('Station')['Temp'].diff().fillna(0).round(2)
+                    self.st_max_dt = self.df_global.groupby('Station')['datetime'].max().to_dict()
+                    
+                    # Yangi hisoblangan datalarni to'g'ridan-to'g'ri Parquet bazasiga yozib saqlab qo'yamiz
+                    try:
+                        self.df_global.to_parquet(Config.GNSS_DATA_PATH, compression='zstd', index=False)
+                        print(f"[GNSS Service] Parquet bazasi yangilandi va saqlandi ({len(self.df_global):,} yozuv).")
+                    except Exception as pe:
+                        print(f"[GNSS Service Parquet Saqlash Xatosi] {pe}")
 
                 self.live_cache.update(new_cache)
             except Exception as e:
                 print(f"[GNSS Weather Sync xatosi] {e}")
 
-            time.sleep(3600)
+            time.sleep(10800) # Har 3 soatda orqa fonda avtomatik yangilab turadi
 
     @staticmethod
     def calculate_weather(pwv, dpwv, rh, p, dp, dt):
