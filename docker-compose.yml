@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    container_name: gnss_web_app
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - SECRET_KEY=uz-gnss-meteo-chang-production-key-2026
+      - GUNICORN_WORKERS=2
+      - GUNICORN_THREADS=4

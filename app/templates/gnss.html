@@ -1,0 +1,1492 @@
+﻿<!DOCTYPE html>
+<html lang="uz">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Uz-GNSS: Meteorologik Ogohlantirish Tizimi</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="{{ url_for('static', filename='js/globe.gl.min.js') }}"></script>
+
+    <style>
+        /* ===== FONTS ===== */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+
+        /* ===== ROOT VARIABLES ===== */
+        :root {
+            --bg: #060a14;
+            --bg2: #0b1120;
+            --card: rgba(13,22,42,0.85);
+            --border: rgba(59,130,246,0.18);
+            --border-h: rgba(59,130,246,0.45);
+            --blue: #3b82f6;
+            --blue-g: rgba(59,130,246,0.35);
+            --cyan: #06b6d4;
+            --cyan-g: rgba(6,182,212,0.3);
+            --green: #10b981;
+            --green-g: rgba(16,185,129,0.3);
+            --red: #ef4444;
+            --red-g: rgba(239,68,68,0.3);
+            --yellow: #f59e0b;
+            --purple: #8b5cf6;
+            --text: #e2e8f0;
+            --muted: #64748b;
+            --dim: #334155;
+        }
+
+        * { margin:0; padding:0; box-sizing:border-box; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            background-image:
+                radial-gradient(ellipse 70% 40% at 15% 10%, rgba(59,130,246,0.1), transparent),
+                radial-gradient(ellipse 50% 35% at 85% 85%, rgba(6,182,212,0.07), transparent),
+                linear-gradient(rgba(59,130,246,0.025) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(59,130,246,0.025) 1px, transparent 1px);
+            background-size: auto, auto, 60px 60px, 60px 60px;
+            color: var(--text);
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+        }
+
+        /* ===== ALERT BANNER ===== */
+        #alertBanner {
+            display: none;
+            background: linear-gradient(135deg, rgba(239,68,68,0.15), rgba(239,68,68,0.05));
+            border: 1px solid rgba(239,68,68,0.4);
+            color: #fca5a5;
+            padding: 14px 24px;
+            font-weight: 700;
+            text-align: center;
+            font-size: 15px;
+            margin: 16px 20px;
+            border-radius: 12px;
+            box-shadow: 0 0 20px rgba(239,68,68,0.2);
+            letter-spacing: 0.3px;
+            animation: pulse-border 2s infinite;
+        }
+        @keyframes pulse-border {
+            0%,100% { border-color: rgba(239,68,68,0.4); }
+            50%      { border-color: rgba(239,68,68,0.8); box-shadow: 0 0 30px rgba(239,68,68,0.4); }
+        }
+
+        /* ===== CONTROLS ===== */
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin: 0 20px 20px;
+            background: rgba(11,17,32,0.9);
+            padding: 16px 20px;
+            border-radius: 14px;
+            box-shadow: 0 4px 30px rgba(0,0,0,0.4);
+            flex-wrap: wrap;
+            border: 1px solid var(--border);
+            backdrop-filter: blur(20px);
+        }
+
+        select, button {
+            padding: 9px 14px;
+            font-size: 14px;
+            border-radius: 9px;
+            outline: none;
+            font-family: 'Inter', sans-serif;
+        }
+
+        select {
+            background: rgba(15,25,50,0.8);
+            border: 1px solid rgba(59,130,246,0.2);
+            color: #cbd5e1;
+            cursor: pointer;
+            transition: all 0.2s;
+            min-width: 110px;
+        }
+        select:hover, select:focus {
+            border-color: var(--blue);
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
+        }
+        select option { background: #0f1728; color: #e2e8f0; }
+
+        button {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            color: white;
+            cursor: pointer;
+            font-weight: 700;
+            border: none;
+            transition: all 0.3s;
+            box-shadow: 0 4px 20px rgba(59,130,246,0.35);
+            letter-spacing: 0.3px;
+        }
+        button:hover {
+            background: linear-gradient(135deg, #2563eb, #1e40af);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(59,130,246,0.5);
+        }
+
+        /* ===== MAP CONTAINER & 3D GLOBE ===== */
+        #map-container {
+            height: 520px;
+            background: #040711;
+            border-radius: 16px;
+            box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+            margin: 0 20px 20px;
+            position: relative;
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        #map {
+            height: 100%;
+            width: 100%;
+            border-radius: 16px;
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            display: none;
+        }
+
+        #globe {
+            height: 100%;
+            width: 100%;
+            border-radius: 16px;
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+        }
+
+        /* ===== TOOLBAR SWITCHER ===== */
+        .map-toolbar {
+            position: absolute;
+            top: 14px;
+            left: 16px;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(11, 17, 32, 0.90);
+            backdrop-filter: blur(14px);
+            border: 1px solid rgba(59, 130, 246, 0.35);
+            padding: 5px 8px;
+            border-radius: 30px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+        .view-btn {
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            border-radius: 20px;
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--text);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .view-btn:hover {
+            background: rgba(59, 130, 246, 0.2);
+            color: #fff;
+            transform: none;
+        }
+        .view-btn.active {
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            color: #fff;
+            box-shadow: 0 2px 10px rgba(37, 99, 235, 0.5);
+        }
+        .view-btn-tool {
+            padding: 5px 9px;
+            font-size: 11px;
+            font-weight: 500;
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.06);
+            color: #cbd5e1;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .view-btn-tool:hover {
+            background: rgba(255,255,255,0.15);
+            color: #fff;
+            transform: none;
+        }
+        .view-divider {
+            width: 1px;
+            height: 18px;
+            background: rgba(255,255,255,0.2);
+            margin: 0 2px;
+        }
+
+        /* 3D Globe HTML Markers */
+        .globe-marker-card {
+            background: rgba(8, 14, 26, 0.92);
+            border: 1.5px solid #3b82f6;
+            border-radius: 8px;
+            padding: 4px 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            backdrop-filter: blur(8px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+            cursor: pointer;
+            user-select: none;
+            white-space: nowrap;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .globe-marker-card:hover {
+            transform: scale(1.15) translateY(-3px);
+            box-shadow: 0 6px 20px rgba(59,130,246,0.6);
+            z-index: 100;
+        }
+        .globe-marker-icon {
+            font-size: 16px;
+            line-height: 1;
+        }
+        .globe-marker-name {
+            font-weight: 700;
+            font-size: 12px;
+            color: #f8fafc;
+            letter-spacing: 0.5px;
+        }
+
+        /* ===== LEGEND ===== */
+        .map-legend {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(8,14,26,0.92);
+            color: #eee;
+            padding: 14px 18px;
+            border-radius: 12px;
+            z-index: 1000;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+            font-size: 13px;
+            line-height: 2.2;
+            border: 1px solid var(--border);
+            backdrop-filter: blur(16px);
+        }
+        .map-legend strong { font-size: 13px; color: #60a5fa; }
+
+        /* ===== MARKERS ===== */
+        .wx-wrap { display:flex; flex-direction:column; align-items:center; cursor:pointer; }
+        .wx-icon { font-size:28px; line-height:1; filter:drop-shadow(0 2px 5px rgba(0,0,0,0.6)); transition:transform 0.2s; }
+        .wx-wrap:hover .wx-icon { transform:scale(1.3); }
+        .wx-label { font-size:10px; font-weight:bold; color:#fff; background:rgba(0,0,0,0.75); border-radius:4px; padding:1px 6px; margin-top:2px; white-space:nowrap; }
+        .wx-pwv { font-size:10px; color:#00e5ff; background:rgba(0,0,0,0.6); border-radius:4px; padding:1px 6px; white-space:nowrap; }
+        .wind-wrap { display:flex; flex-direction:column; align-items:center; cursor:pointer; }
+        .wind-arrow-svg { transition:transform 0.3s; }
+        .wind-label { font-size:10px; color:#fff; background:rgba(0,80,100,0.8); border-radius:4px; padding:1px 6px; margin-top:2px; white-space:nowrap; }
+
+        /* ===== ERROR ===== */
+        #errorMessage {
+            text-align:center; color:#f87171; font-weight:bold; display:none;
+            margin:0 20px 20px; padding:16px;
+            background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.3);
+            border-radius:12px;
+        }
+
+        /* ===== METRICS ===== */
+        .metrics-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            gap: 14px;
+            margin: 0 20px 20px;
+        }
+        .metrics-container.hidden-init { display: none; }
+
+        .metric-card {
+            flex: 1;
+            min-width: 120px;
+            background: var(--card);
+            padding: 16px 12px;
+            border-radius: 14px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+            text-align: center;
+            border: 1px solid var(--border);
+            border-top: 2px solid var(--blue);
+            transition: all 0.3s;
+            backdrop-filter: blur(16px);
+            position: relative;
+            overflow: hidden;
+        }
+        .metric-card::before {
+            content:'';
+            position:absolute; inset:0;
+            background:linear-gradient(135deg,rgba(59,130,246,0.05),transparent);
+            pointer-events:none;
+        }
+        .metric-card:hover {
+            transform: translateY(-5px);
+            border-color: rgba(59,130,246,0.45);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.5), 0 0 25px rgba(59,130,246,0.12);
+        }
+        .metric-card h3 {
+            margin:0 0 8px;
+            font-size:10px;
+            color: var(--muted);
+            text-transform:uppercase;
+            letter-spacing:1.2px;
+            font-weight:700;
+        }
+        .metric-card p {
+            margin:0;
+            font-size:1.8rem;
+            font-weight:800;
+            color:#f1f5f9;
+            font-family:'JetBrains Mono', monospace;
+        }
+        .alert-card { border-top-color: var(--red) !important; }
+        .alert-card h3 { color: #f87171 !important; }
+        .alert-card p  { color: #f87171 !important; }
+
+        /* ===== CHARTS ===== */
+        .charts-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 18px;
+            margin: 0 20px 20px;
+        }
+        .charts-container.hidden-init { display: none; }
+
+        .chart-box {
+            background: var(--card);
+            padding: 20px;
+            border-radius: 14px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+            border: 1px solid var(--border);
+            backdrop-filter: blur(16px);
+            position: relative;
+            overflow: hidden;
+            transition: border-color 0.3s;
+        }
+        .chart-box::before {
+            content:'';
+            position:absolute; top:0; left:0; right:0; height:2px;
+            background:linear-gradient(90deg, var(--blue), var(--cyan));
+            opacity:0.6;
+        }
+        .chart-box:hover { border-color: rgba(59,130,246,0.3); }
+        .chart-box h3 {
+            margin:0 0 14px;
+            font-size:0.9rem;
+            color:#e2e8f0;
+            font-weight:700;
+            padding-left:10px;
+            border-left:3px solid var(--blue);
+        }
+        .chart-box.full-width { grid-column: span 2; }
+
+        /* ===== HOURLY SECTION ===== */
+        .hourly-section { margin:0 20px 20px; }
+        .hourly-section.hidden-init { display: none; }
+
+        .hourly-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+        .hourly-header h2 { color:#60a5fa; font-size:18px; margin:0; font-weight:700; }
+        .hourly-header .hourly-date { color:var(--muted); font-size:13px; }
+
+        .hourly-scroll-wrap { position:relative; }
+        .hourly-scroll {
+            display:flex; gap:0; overflow-x:auto; scroll-behavior:smooth;
+            padding-bottom:8px;
+            background:linear-gradient(180deg, #0d1628 0%, #131d35 100%);
+            border-radius:14px;
+            box-shadow:0 4px 24px rgba(0,0,0,0.4);
+            border:1px solid var(--border);
+        }
+        .hourly-scroll::-webkit-scrollbar { height:5px; }
+        .hourly-scroll::-webkit-scrollbar-thumb { background:rgba(59,130,246,0.3); border-radius:3px; }
+
+        .hourly-card {
+            min-width:84px; padding:16px 8px 14px;
+            display:flex; flex-direction:column; align-items:center; gap:5px;
+            border-right:1px solid rgba(59,130,246,0.06);
+            transition:background .2s; cursor:default;
+        }
+        .hourly-card:hover { background:rgba(59,130,246,0.08); }
+        .hourly-card.now { background:rgba(59,130,246,0.15); border-bottom:3px solid #3b82f6; }
+
+        .hc-time  { font-size:11px; color:#94a3b8; font-weight:600; letter-spacing:.5px; }
+        .hc-icon  { font-size:24px; line-height:1; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.4)); }
+        .hc-temp  { font-size:16px; font-weight:800; color:#f1f5f9; font-family:'JetBrains Mono',monospace; }
+        .hc-desc  { font-size:10px; color:#64748b; text-align:center; max-width:75px; line-height:1.3; }
+        .hc-wind  { font-size:10px; color:#38bdf8; font-weight:600; }
+        .hc-hum   { font-size:10px; color:#34d399; font-weight:600; }
+        .hc-pwv   { font-size:10px; font-weight:700; padding:2px 7px; border-radius:6px; }
+        .hc-pwv.pwv-high { background:rgba(16,185,129,0.2); color:#34d399; }
+        .hc-pwv.pwv-med  { background:rgba(245,158,11,0.2); color:#fcd34d; }
+        .hc-pwv.pwv-low  { background:rgba(239,68,68,0.2);  color:#f87171; }
+
+        /* ===== SCROLL ARROWS ===== */
+        .scroll-arrow {
+            position:absolute; top:50%; transform:translateY(-50%);
+            background:rgba(8,14,26,0.85); border:1px solid rgba(59,130,246,0.25);
+            color:#60a5fa; border-radius:50%; width:34px; height:34px;
+            display:flex; align-items:center; justify-content:center;
+            cursor:pointer; z-index:5; font-size:16px;
+            transition:all 0.2s; backdrop-filter:blur(8px);
+        }
+        .scroll-arrow:hover { background:rgba(59,130,246,0.2); border-color:rgba(59,130,246,0.5); }
+        .scroll-arrow.left  { left:-16px; }
+        .scroll-arrow.right { right:-16px; }
+
+        /* ===== SECTION TITLE ===== */
+        .section-title-bar {
+            display: flex; align-items: center; gap: 10px;
+            padding: 0 20px; margin-bottom: 14px;
+        }
+        .section-title-bar h2 {
+            font-size: 1.05rem; font-weight: 700; color: #e2e8f0;
+            padding-left: 12px;
+            border-left: 3px solid;
+            border-image: linear-gradient(180deg,#60a5fa,#06b6d4) 1;
+        }
+
+        /* ===== MODAL ===== */
+        .modal {
+            display:none; position:fixed; z-index:9999; left:0; top:0;
+            width:100%; height:100%; overflow:auto;
+            background:rgba(6,10,20,0.85); backdrop-filter:blur(8px);
+            animation:fadeIn 0.25s;
+        }
+        @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+
+        .modal-content {
+            background: linear-gradient(135deg, #0d1628, #111827);
+            border: 1px solid rgba(59,130,246,0.25);
+            margin: 60px auto;
+            padding: 28px;
+            border-radius: 18px;
+            width: 90%; max-width: 680px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.7), 0 0 40px rgba(59,130,246,0.1);
+        }
+        .modal-content h2 { color:#60a5fa; margin-bottom:16px; font-size:1.2rem; }
+        .modal-content p  { color:#94a3b8; line-height:1.6; margin-bottom:12px; font-size:0.9rem; }
+
+        .close-btn {
+            color:#64748b; float:right; font-size:26px;
+            font-weight:bold; cursor:pointer; line-height:1;
+            transition:color 0.2s;
+        }
+        .close-btn:hover { color:#f1f5f9; }
+
+        /* ===== SCROLLBAR ===== */
+        ::-webkit-scrollbar { width:6px; }
+        ::-webkit-scrollbar-track { background:rgba(0,0,0,0.2); }
+        ::-webkit-scrollbar-thumb { background:rgba(59,130,246,0.3); border-radius:3px; }
+        ::-webkit-scrollbar-thumb:hover { background:rgba(59,130,246,0.5); }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width:800px) {
+            .charts-container { grid-template-columns:1fr; }
+            .chart-box.full-width { grid-column:span 1; }
+            #map-container { margin:0 10px 16px; height:340px; }
+            .controls { margin:0 10px 16px; }
+            .metrics-container { margin:0 10px 16px; }
+        }
+</style>
+</head>
+
+<body>
+
+    <!-- Top Navigation Bar -->
+    <nav style="
+        position: sticky; top: 0; z-index: 1000;
+        background: linear-gradient(135deg, #0e1117 0%, #1a1d3a 100%);
+        border-bottom: 1px solid rgba(77,166,255,0.25);
+        padding: 0 20px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 56px;
+        backdrop-filter: blur(12px);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    ">
+        <!-- Logo -->
+        <div style="display:flex;align-items:center;gap:10px;margin-right:16px;border-right:1px solid rgba(255,255,255,0.1);padding-right:16px;">
+            <span style="font-size:22px;">🛰️</span>
+            <span style="font-weight:800;font-size:15px;color:#4da6ff;letter-spacing:0.5px;">UZ-GNSS</span>
+        </div>
+
+        <!-- Nav links -->
+        <a href="#" onclick="document.getElementById('map').scrollIntoView({behavior:'smooth'}); return false;"
+           style="padding:6px 14px;border-radius:8px;color:#94a3b8;text-decoration:none;font-size:13px;font-weight:600;transition:all 0.2s;"
+           onmouseover="this.style.background='rgba(255,255,255,0.08)';this.style.color='#fff'"
+           onmouseout="this.style.background='transparent';this.style.color='#94a3b8'">
+            🗺️ Xarita
+        </a>
+        <a href="#" onclick="document.getElementById('hourlySection').scrollIntoView({behavior:'smooth'}); return false;"
+           style="padding:6px 14px;border-radius:8px;color:#94a3b8;text-decoration:none;font-size:13px;font-weight:600;transition:all 0.2s;"
+           onmouseover="this.style.background='rgba(255,255,255,0.08)';this.style.color='#fff'"
+           onmouseout="this.style.background='transparent';this.style.color='#94a3b8'">
+            ⏱️ Soatlik
+        </a>
+        <a href="#" onclick="document.getElementById('metricsArea').scrollIntoView({behavior:'smooth'}); return false;"
+           style="padding:6px 14px;border-radius:8px;color:#94a3b8;text-decoration:none;font-size:13px;font-weight:600;transition:all 0.2s;"
+           onmouseover="this.style.background='rgba(255,255,255,0.08)';this.style.color='#fff'"
+           onmouseout="this.style.background='transparent';this.style.color='#94a3b8'">
+            📊 Ko'rsatkichlar
+        </a>
+        <a href="#" onclick="document.getElementById('chartsArea').scrollIntoView({behavior:'smooth'}); return false;"
+           style="padding:6px 14px;border-radius:8px;color:#94a3b8;text-decoration:none;font-size:13px;font-weight:600;transition:all 0.2s;"
+           onmouseover="this.style.background='rgba(255,255,255,0.08)';this.style.color='#fff'"
+           onmouseout="this.style.background='transparent';this.style.color='#94a3b8'">
+            📈 Grafiklar
+        </a>
+        <a href="#" onclick="openSeedingModal(); return false;"
+           style="padding:6px 14px;border-radius:8px;color:#20B2AA;text-decoration:none;font-size:13px;font-weight:600;border:1px solid rgba(32,178,170,0.3);transition:all 0.2s;"
+           onmouseover="this.style.background='rgba(32,178,170,0.1)'"
+           onmouseout="this.style.background='transparent'">
+            ☁️ Sun'iy Yomg'ir
+        </a>
+
+        <!-- Divider -->
+        <div style="flex:1;"></div>
+
+        <!-- Back to main dashboard button -->
+        <a href="/chang" style="
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 18px;
+            background: linear-gradient(135deg, #e67e22, #d35400);
+            color: #fff;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 13px;
+            box-shadow: 0 3px 12px rgba(230,126,34,0.4);
+            transition: all 0.25s ease;
+            border: 1px solid rgba(255,255,255,0.1);
+        "
+        onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 6px 20px rgba(230,126,34,0.6)'"
+        onmouseout="this.style.transform='none';this.style.boxShadow='0 3px 12px rgba(230,126,34,0.4)'">
+            🏜️ Chang-To'zon Dushbordi
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </a>
+
+        <!-- Project label -->
+        <span style="color:#475569;font-size:11px;margin-left:8px;max-width:200px;line-height:1.3;display:none;" class="project-label">
+            Choʻlga aylanayotgan hududlar monitoring tizimi
+        </span>
+    </nav>
+
+
+    <div class="header">
+        <h1>🛰️ Uz-GNSS: Atmosfera Tahlili va Ogohlantirish Tizimi</h1>
+        <p>Namlik konvergensiyasi, shamol adveksiyasi va konvektiv xavfni real vaqtda aniqlash</p>
+    </div>
+
+    <div id="alertBanner">
+        <marquee id="alertText" scrollamount="6" style="font-size: 18px; padding-top: 5px;"></marquee>
+    </div>
+    <div id="seedingBanner" style="display:none; background: linear-gradient(90deg, #1e3c72, #2a5298); color: #fff; padding: 15px; font-size: 18px; font-weight: bold; border-bottom: 3px solid #4da6ff; letter-spacing: 0.5px;">
+        <marquee id="seedingText" scrollamount="5"></marquee>
+    </div>
+
+    <div class="controls">
+        <select id="stationSelect">
+            <option value="TASH" selected>📌 TASH (Toshkent)</option>
+            <option value="KIT3">📌 KIT3 (Kitob)</option>
+            <option value="NUKU">📌 NUKU (Nukus)</option>
+            <option value="SAMA">📌 SAMA (Samarqand)</option>
+            <option value="BUKH">📌 BUKH (Buxoro)</option>
+            <option value="FERG">📌 FERG (Farg'ona)</option>
+            <option value="ANDI">📌 ANDI (Andijon)</option>
+            <option value="NAMA">📌 NAMA (Namangan)</option>
+            <option value="JIZZ">📌 JIZZ (Jizzax)</option>
+            <option value="SURX">📌 SURX (Termiz)</option>
+            <option value="SIRD">📌 SIRD (Guliston)</option>
+            <option value="NAVI">📌 NAVI (Navoiy)</option>
+            <option value="KHOR">📌 KHOR (Urganch)</option>
+            <option value="QASH">📌 QASH (Qarshi)</option>
+            <option value="ZARA">📌 ZARA (Zarafshon)</option>
+            <option value="KITG">📌 KITG (Kitob 2)</option>
+        </select>
+        <select id="yearSelect">
+            <option value="2026">2026 (Joriy)</option>
+            <option value="2025">2025</option>
+            <option value="2024">2024</option>
+            <option value="2023">2023</option>
+            <option value="2022">2022</option>
+            <option value="2021">2021</option>
+            <option value="2020">2020</option>
+        </select>
+        <select id="monthSelect">
+            <option value="">Barcha oylar</option>
+            <option value="1"> Yanvar</option>
+            <option value="2">Fevral</option>
+            <option value="3">Mart</option>
+            <option value="4">Aprel</option>
+            <option value="5"> May</option>
+            <option value="6">Iyun</option>
+            <option value="7">Iyul</option>
+            <option value="8">Avgust</option>
+            <option value="9">Sentabr</option>
+            <option value="10">Oktabr</option>
+            <option value="11">Noyabr</option>
+            <option value="12">Dekabr</option>
+        </select>
+        <select id="daySelect">
+            <option value="">Barcha kunlar</option>
+        </select>
+        <select id="hourSelect">
+            <option value="">Barcha soatlar</option>
+        </select>
+        <button id="analyzeBtn" onclick="fetchData()">
+            Tahlil qilish
+            <span id="loadingSpinner" style="display:none; margin-left:5px;">⏳</span>
+        </button>
+        <button onclick="openSeedingModal()" style="background-color: #20B2AA; margin-left: 10px;">☁️ Sun'iy yomg'ir</button>
+    </div>
+
+    <!-- Sun'iy yomg'ir Modal -->
+    <div id="seedingModal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closeSeedingModal()">&times;</span>
+            <h2>☁️ Sun'iy yomg'ir yog'dirish (Cloud Seeding) - Amaliy Tahlil</h2>
+            <p><strong>Tanlangan hudud va vaqt oralig'idagi aniq ko'rsatkichlar:</strong></p>
+            <ul>
+                <li><strong>1. Eng maqbul vaqtni aniqlash (Timing):</strong> PWV > 20 mm va dPWV > 0.5 mm bo'lgan qulay paytlar:
+                    <div id="seedTiming">Ma'lumot tahlil qilinmoqda...</div>
+                </li>
+                <li><strong>2. Nam massalar harakatini kuzatish:</strong> Shamol yo'nalishiga ko'ra ushbu hududdagi qalin bulut va namlik boshqa hududga qachon yetib borishi:
+                    <div id="seedTrajectory" style="margin-top: 5px;">Ma'lumot tahlil qilinmoqda...</div>
+                </li>
+                <li><strong>3. Konvektiv sharoitlarni bashorat qilish:</strong> Bosim (dP < -0.5) va harorat (dT < -0.5) birga pasaygan vaqtlar (bulut shakllanishi):
+                    <div id="seedConvective">Ma'lumot tahlil qilinmoqda...</div>
+                </li>
+                <li><strong>4. Resurslarni tejash ("Quruq" bulutlar):</strong> PWV yuqori bo'lsa-da, nisbiy namlik RH < 40% bo'lgan, modda sepish befoyda bo'lgan vaqtlar:
+                    <div id="seedDry">Ma'lumot tahlil qilinmoqda...</div>
+                </li>
+                <li><strong>5. Natijani ilmiy baholash:</strong> Suv bug'ining keskin pasayishi (dPWV < -1.0) qayd etilgan, atmosferadan yomg'ir tushgan vaqtlar:
+                    <div id="seedEval">Ma'lumot tahlil qilinmoqda...</div>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <div id="errorMessage">Ma'lumot topilmadi yoki yuklanmoqda...</div>
+
+    <div id="map-container">
+        <!-- Rejim tanlash paneli -->
+        <div class="map-toolbar">
+            <button id="btnView3D" class="view-btn active" onclick="switchView('3d')">
+                🌐 3D Yer Shari
+            </button>
+            <button id="btnView2D" class="view-btn" onclick="switchView('2d')">
+                🗺️ 2D Xarita
+            </button>
+            <span class="view-divider"></span>
+            <button class="view-btn-tool" onclick="resetGlobeFocus()" title="O'zbekistonga yo'naltirish">
+                🎯 UZB Markaz
+            </button>
+            <button id="btnRotate" class="view-btn-tool" onclick="toggleGlobeRotation()" title="Avto-aylanish">
+                🔄 Aylanish: <span id="rotateStatusText">Yoqiq</span>
+            </button>
+            <button id="btnTheme" class="view-btn-tool" onclick="toggleGlobeTexture()" title="Tungi / Kunduzgi">
+                🌙 Tungi
+            </button>
+        </div>
+
+        <div id="globe"></div>
+        <div id="map"></div>
+
+        <div class="map-legend">
+            <strong>Ob-havo holati:</strong><br>
+            ⛈️ &nbsp;Jala / Sel xavfi<br>
+            🌧️ &nbsp;Yomg'ir ehtimoli<br>
+            🌤️ &nbsp;Bulutli havo<br>
+            ☀️ &nbsp;Ochiq havo<br>
+            <hr style="margin:6px 0; border-color:#555;">
+            <small style="color:#aaa;">💡 Stansiyaga bosib tahlil qiling</small>
+        </div>
+    </div>
+
+    <!-- AccuWeather stilidagi soatlik panel -->
+    <div class="hourly-section" id="hourlySection">
+        <div class="hourly-header">
+            <h2>⏱️ Soatlik ob-havo</h2>
+            <span class="hourly-date" id="hourlyDateLabel"></span>
+        </div>
+        <div class="hourly-scroll-wrap">
+            <button class="scroll-btn left" onclick="document.getElementById('hourlyScroll').scrollLeft-=300">‹</button>
+            <div class="hourly-scroll" id="hourlyScroll"></div>
+            <button class="scroll-btn right"
+                onclick="document.getElementById('hourlyScroll').scrollLeft+=300">›</button>
+        </div>
+    </div>
+
+    <div class="metrics-container" id="metricsArea">
+        <div class="metric-card alert-card">
+            <h3>🌧️ Yog'in xavfi</h3>
+            <p id="avg_prob">-- %</p>
+        </div>
+        <div class="metric-card" style="border-color: #FF8C00;">
+            <h3>🗜️ Bosim</h3>
+            <p id="avg_p">-- hPa</p>
+        </div>
+        <div class="metric-card" style="border-color: #008080;">
+            <h3>Suv bug'i</h3>
+            <p id="avg_pwv">-- mm</p>
+        </div>
+        <div class="metric-card" style="border-color: #800080;">
+            <h3>Jami (ZTD)</h3>
+            <p id="avg_ztd">-- m</p>
+        </div>
+        <div class="metric-card" style="border-color: #A52A2A;">
+            <h3>Quruq(ZHD)</h3>
+            <p id="avg_zhd">-- m</p>
+        </div>
+        <div class="metric-card" style="border-color: #000080;">
+            <h3>Nam (ZWD)</h3>
+            <p id="avg_zwd">-- m</p>
+        </div>
+        <div class="metric-card" style="border-color: #DC143C;">
+            <h3>Harorat</h3>
+            <p id="avg_t">-- °C</p>
+        </div>
+        <div class="metric-card" style="border-color: #1E90FF;">
+            <h3>Namlik</h3>
+            <p id="avg_rh">-- %</p>
+        </div>
+        <div class="metric-card" style="border-color: #20B2AA;">
+            <h3>💨 Shamol</h3>
+            <p id="avg_w_spd">-- m/s</p>
+            <p id="avg_w_deg" style="font-size: 13px; font-weight: normal; margin-top: 5px; color: #555;">--</p>
+        </div>
+    </div>
+
+    <div class="charts-container" id="chartsArea">
+        <div class="chart-box full-width"><canvas id="pwvChart"></canvas></div>
+        <div class="chart-box full-width"><canvas id="delayChart"></canvas></div>
+        <div class="chart-box"><canvas id="tChart"></canvas></div>
+        <div class="chart-box"><canvas id="pChart"></canvas></div>
+        <div class="chart-box full-width"><canvas id="rhChart"></canvas></div>
+    </div>
+
+    <script>
+        // Kunlar ro'yxati
+        const daySelect = document.getElementById('daySelect');
+        for (let i = 1; i <= 31; i++) daySelect.innerHTML += `<option value="${i}">${i}-kun</option>`;
+        daySelect.value = "";
+
+        // Modal logika
+        function openSeedingModal() { document.getElementById('seedingModal').style.display = 'block'; }
+        function closeSeedingModal() { document.getElementById('seedingModal').style.display = 'none'; }
+        window.onclick = function(event) {
+            if (event.target == document.getElementById('seedingModal')) {
+                closeSeedingModal();
+            }
+        }
+
+        // Soatlar ro'yxati
+        const hourSelect = document.getElementById('hourSelect');
+        for (let i = 0; i <= 23; i++) {
+            let h = i < 10 ? '0' + i : i;
+            hourSelect.innerHTML += `<option value="${i}">${h}:00</option>`;
+        }
+        hourSelect.value = "";
+
+        const ALL_STATION_COORDS = {
+            "TASH": {"lat": 41.328, "lon": 69.296, "name": "Toshkent"},
+            "KIT3": {"lat": 39.135, "lon": 66.887, "name": "Kitob"},
+            "KITG": {"lat": 39.133, "lon": 66.887, "name": "Kitob GNSS"},
+            "SAMA": {"lat": 39.654, "lon": 66.959, "name": "Samarqand"},
+            "BUKH": {"lat": 39.768, "lon": 64.455, "name": "Buxoro"},
+            "NUKU": {"lat": 42.460, "lon": 59.617, "name": "Nukus"},
+            "FERG": {"lat": 40.386, "lon": 71.786, "name": "Farg'ona"},
+            "ANDI": {"lat": 40.782, "lon": 72.344, "name": "Andijon"},
+            "NAMA": {"lat": 40.998, "lon": 71.672, "name": "Namangan"},
+            "JIZZ": {"lat": 40.1158, "lon": 67.8422, "name": "Jizzax"},
+            "SURX": {"lat": 37.2242, "lon": 67.2783, "name": "Termiz"},
+            "SIRD": {"lat": 40.4897, "lon": 68.7842, "name": "Guliston"},
+            "NAVI": {"lat": 40.1039, "lon": 65.3688, "name": "Navoiy"},
+            "KHOR": {"lat": 41.5500, "lon": 60.6333, "name": "Urganch"},
+            "QASH": {"lat": 38.8606, "lon": 65.7891, "name": "Qarshi"},
+            "ZARA": {"lat": 41.5750, "lon": 64.2010, "name": "Zarafshon"}
+        };
+
+        // 3D Yer Shari (Globe) va 2D Xarita holati
+        let globe = null;
+        let map = null;
+        let mapLayers = [];
+        let lastMapData = [];
+        let isRotating = true;
+        let isNightTexture = true;
+        let currentMode = '3d';
+        const TEXTURE_NIGHT = '/static/img/earth-night.jpg';
+        const TEXTURE_DAY = '/static/img/earth-blue-marble.jpg';
+        const TEXTURE_SKY = '/static/img/night-sky.png';
+
+        function initGlobe() {
+            const container = document.getElementById('globe');
+            if (!container || globe || typeof Globe === 'undefined') return;
+
+            try {
+                globe = Globe()(container)
+                    .globeImageUrl(TEXTURE_NIGHT)
+                    .backgroundImageUrl(TEXTURE_SKY)
+                    .showAtmosphere(true)
+                    .atmosphereColor('#3b82f6')
+                    .atmosphereAltitude(0.24)
+                    .pointOfView({ lat: 41.377, lng: 64.585, altitude: 1.85 }, 1200);
+
+                const controls = globe.controls();
+                if (controls) {
+                    controls.autoRotate = true;
+                    controls.autoRotateSpeed = 0.5;
+                    controls.enableDamping = true;
+                    controls.dampingFactor = 0.08;
+                }
+
+                const ro = new ResizeObserver(entries => {
+                    for (let entry of entries) {
+                        const { width, height } = entry.contentRect;
+                        if (width > 0 && height > 0 && globe) {
+                            globe.width(width).height(height);
+                        }
+                    }
+                });
+                ro.observe(container);
+
+                globe.width(container.clientWidth || 800).height(container.clientHeight || 520);
+            } catch (err) {
+                console.error("Globe init xatosi:", err);
+            }
+        }
+
+        function initLeafletMap() {
+            if (map) return;
+            const uzbBounds = [[37.0, 55.5], [45.8, 73.5]];
+            const osmMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' });
+            const satelliteMap = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: '&copy; Esri' });
+            const darkMap = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19, attribution: '&copy; CARTO' });
+
+            map = L.map('map', {
+                center: [41.377, 64.585], zoom: 6, minZoom: 5.5,
+                maxBounds: uzbBounds, maxBoundsViscosity: 1.0, layers: [osmMap]
+            });
+            L.control.layers({ "🗺️ OpenStreetMap": osmMap, "🛰️ Sun'iy yo'ldosh": satelliteMap, "🌙 Tungi": darkMap }).addTo(map);
+
+            if (lastMapData && lastMapData.length) {
+                drawMapMarkers(lastMapData);
+            }
+        }
+
+        function updateGlobeData(mapData) {
+            if (!globe) return;
+            const dataMapByStation = {};
+            (mapData || []).forEach(st => {
+                dataMapByStation[st.station] = st;
+            });
+
+            const stationsList = Object.keys(ALL_STATION_COORDS).map(code => {
+                const coord = ALL_STATION_COORDS[code];
+                const live = dataMapByStation[code] || {};
+                const pwv = live.pwv || 16.0;
+                const dpwv = live.dpwv || 0.0;
+                const rh = live.rh || 55.0;
+                const p = live.p || 980.0;
+                const dp = live.dp || 0.0;
+                const dt = live.dt || 0.0;
+                const wx = getWeather(pwv, dpwv, rh, p, dp, dt);
+                return {
+                    station: code,
+                    name: coord.name,
+                    lat: coord.lat,
+                    lon: coord.lon,
+                    t: live.t !== undefined ? live.t : '--',
+                    p: live.p !== undefined ? live.p : '--',
+                    pwv: live.pwv !== undefined ? live.pwv : '--',
+                    spd: live.wind_spd !== undefined ? live.wind_spd : 0,
+                    deg: live.wind_deg !== undefined ? live.wind_deg : 0,
+                    prob: wx.prob,
+                    color: wx.color,
+                    icon: wx.icon,
+                    label: wx.label,
+                    hasRealData: !!dataMapByStation[code]
+                };
+            });
+
+            // 1. HTML Markers on Globe
+            globe.htmlElementsData(stationsList)
+                .htmlLat(d => d.lat)
+                .htmlLng(d => d.lon)
+                .htmlAltitude(0.015)
+                .htmlElement(d => {
+                    const el = document.createElement('div');
+                    el.className = 'globe-station-marker';
+                    el.innerHTML = `
+                        <div class="globe-marker-card" style="border-color:${d.color}; box-shadow: 0 0 12px ${d.color}66;">
+                            <span class="globe-marker-icon">${d.icon}</span>
+                            <div style="display:flex; flex-direction:column; line-height:1.15;">
+                                <div style="display:flex; align-items:center; gap:4px;">
+                                    <span class="globe-marker-name">${d.station}</span>
+                                    <span style="font-size:10px; color:#cbd5e1;">(${d.name})</span>
+                                </div>
+                                <span style="font-size:10px; color:${d.color}; font-weight:700;">
+                                    ${d.t !== '--' ? d.t + '°C • ' : ''}${d.prob}% yog'in
+                                </span>
+                            </div>
+                        </div>
+                    `;
+                    el.style.pointerEvents = 'auto';
+                    el.style.cursor = 'pointer';
+                    el.onclick = (e) => {
+                        e.stopPropagation();
+                        const stSelect = document.getElementById('stationSelect');
+                        if (stSelect) {
+                            stSelect.value = d.station;
+                            fetchData();
+                        }
+                        globe.pointOfView({ lat: d.lat, lng: d.lon, altitude: 1.15 }, 1000);
+                    };
+                    return el;
+                });
+
+            // 2. Pulsing Rings
+            globe.ringsData(stationsList)
+                .ringLat(d => d.lat)
+                .ringLng(d => d.lon)
+                .ringAltitude(0.005)
+                .ringColor(d => d.color)
+                .ringMaxRadius(d => 1.6 + (d.prob / 45))
+                .ringPropagationSpeed(1.4)
+                .ringRepeatPeriod(1200);
+
+            // 3. Arcs
+            const connections = [
+                { from: 'TASH', to: 'SAMA' },
+                { from: 'SAMA', to: 'BUKH' },
+                { from: 'BUKH', to: 'NAVI' },
+                { from: 'NAVI', to: 'ZARA' },
+                { from: 'SAMA', to: 'KIT3' },
+                { from: 'TASH', to: 'FERG' },
+                { from: 'FERG', to: 'ANDI' },
+                { from: 'ANDI', to: 'NAMA' },
+                { from: 'BUKH', to: 'KHOR' },
+                { from: 'KHOR', to: 'NUKU' },
+                { from: 'SAMA', to: 'QASH' },
+                { from: 'QASH', to: 'SURX' },
+                { from: 'TASH', to: 'SIRD' },
+                { from: 'SIRD', to: 'JIZZ' }
+            ].map(c => {
+                const f = ALL_STATION_COORDS[c.from];
+                const t = ALL_STATION_COORDS[c.to];
+                return f && t ? {
+                    startLat: f.lat, startLng: f.lon,
+                    endLat: t.lat, endLng: t.lon,
+                    from: c.from, to: c.to
+                } : null;
+            }).filter(Boolean);
+
+            globe.arcsData(connections)
+                .arcStartLat(d => d.startLat)
+                .arcStartLng(d => d.startLng)
+                .arcEndLat(d => d.endLat)
+                .arcEndLng(d => d.endLng)
+                .arcColor(() => ['rgba(59, 130, 246, 0.75)', 'rgba(6, 182, 212, 0.75)'])
+                .arcDashLength(0.4)
+                .arcDashGap(0.2)
+                .arcDashAnimateTime(2000)
+                .arcAltitude(0.06);
+        }
+
+        function resetGlobeFocus() {
+            if (globe) {
+                globe.pointOfView({ lat: 41.377, lng: 64.585, altitude: 1.85 }, 1200);
+            }
+        }
+
+        function toggleGlobeRotation() {
+            if (!globe) return;
+            const controls = globe.controls();
+            if (!controls) return;
+            isRotating = !isRotating;
+            controls.autoRotate = isRotating;
+            const txt = document.getElementById('rotateStatusText');
+            if (txt) txt.textContent = isRotating ? "Yoqiq" : "O'chiq";
+        }
+
+        function toggleGlobeTexture() {
+            if (!globe) return;
+            isNightTexture = !isNightTexture;
+            globe.globeImageUrl(isNightTexture ? TEXTURE_NIGHT : TEXTURE_DAY);
+            const btn = document.getElementById('btnTheme');
+            if (btn) btn.textContent = isNightTexture ? "🌙 Tungi" : "☀️ Kunduzgi";
+        }
+
+        function switchView(mode) {
+            currentMode = mode;
+            const globeEl = document.getElementById('globe');
+            const mapEl = document.getElementById('map');
+            const btn3D = document.getElementById('btnView3D');
+            const btn2D = document.getElementById('btnView2D');
+
+            if (mode === '3d') {
+                globeEl.style.display = 'block';
+                mapEl.style.display = 'none';
+                btn3D.classList.add('active');
+                btn2D.classList.remove('active');
+                if (!globe) {
+                    initGlobe();
+                    if (lastMapData.length) updateGlobeData(lastMapData);
+                } else {
+                    globe.width(globeEl.clientWidth).height(globeEl.clientHeight);
+                }
+            } else {
+                globeEl.style.display = 'none';
+                mapEl.style.display = 'block';
+                btn2D.classList.add('active');
+                btn3D.classList.remove('active');
+                initLeafletMap();
+                if (map) {
+                    setTimeout(() => {
+                        map.invalidateSize();
+                        if (lastMapData.length) drawMapMarkers(lastMapData);
+                    }, 80);
+                }
+            }
+        }
+        let charts = {};
+
+        /* ---------- Grafik yaratish ---------- */
+        function createChart(ctxId, title, labelStr, data, labels, color) {
+            const ctx = document.getElementById(ctxId).getContext('2d');
+            if (charts[ctxId]) charts[ctxId].destroy();
+            charts[ctxId] = new Chart(ctx, {
+                type: 'line',
+                data: { labels, datasets: [{ label: labelStr, data, borderColor: color, backgroundColor: color + '33', borderWidth: 2, pointRadius: 2, fill: true, tension: 0.3 }] },
+                options: { responsive: true, plugins: { title: { display: true, text: title, font: { size: 14 } } } }
+            });
+        }
+
+        function createMultiChart(ctxId, title, datasets, labels) {
+            const ctx = document.getElementById(ctxId).getContext('2d');
+            if (charts[ctxId]) charts[ctxId].destroy();
+            charts[ctxId] = new Chart(ctx, {
+                type: 'bar', data: { labels, datasets },
+                options: { responsive: true, plugins: { title: { display: true, text: title, font: { size: 16 } } } }
+            });
+        }
+
+        /* ---------- Ob-havo va shamol ikonkalari ---------- */
+        function getWeather(pwv, dpwv, rh, p, dp, dt) {
+            let prob = 0;
+
+            // 1. GNSS asosida Yog'in va Jala (Convective storm) aniqlash algoritmi
+            if (dpwv >= 1.5 && dt <= -1.0 && dp <= -0.5) {
+                // Kuchli konvektiv jala (katta namlik oqimi + sovuq front + bosim tushishi)
+                prob += 85;
+            } else if (dpwv >= 1.0 && dt <= -0.5) {
+                // O'rtacha yomg'ir
+                prob += 50;
+            } else if (dpwv >= 0.5) {
+                // Namlik oshyapti
+                prob += 20;
+            } else if (dpwv < -0.5) {
+                prob -= 20; // Bulut tarqalyapti
+            }
+
+            if (pwv >= 25) prob += 20;
+            else if (pwv >= 20) prob += 10;
+            else if (pwv < 15) prob -= 10; // Quruq havo
+
+            if (rh >= 70) prob += (rh - 60) * 0.5;
+            else if (rh < 50) prob -= 15;
+
+            if (dp <= -1.0) prob += 15; // Siklon kirib kelmoqda
+            else if (dp >= 1.0) prob -= 15; // Antitsiklon (Ochiq havo)
+
+            prob = Math.min(100, Math.max(0, Math.round(prob)));
+
+            // Ikonkalarni aniqlash
+            let icon = '☀️', label = 'Ochiq havo', color = '#FFD700';
+            if (prob >= 75) { icon = '⛈️'; label = 'Jala / Sel xavfi'; color = '#ff4444'; }
+            else if (prob >= 50) { icon = '🌧️'; label = "Yomg'ir"; color = '#4da6ff'; }
+            else if (prob >= 25 || rh > 55 || pwv > 18) { icon = '🌤️'; label = 'Bulutli / Nam havo'; color = '#aaaaaa'; }
+
+            return { icon, label, color, prob };
+        }
+
+        // Shamol strelkasi (SVG, shimol = 0°, soat yo'nalishi oshadi)
+        // wind_deg = meteorologik yo'nalish (shamol QAYERDAN esmoqda)
+        // Xaritada strelka "shamol qayoqqa esayotganini" ko'rsatadi → +180°
+        function windArrowSVG(deg, spd) {
+            const rotateDeg = (deg + 180) % 360; // shamol ketayotgan tomonga
+            const col = spd > 10 ? '#ff6b6b' : spd > 5 ? '#ffd93d' : '#4fc3f7';
+            return `
+            <svg width="36" height="36" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg"
+                 style="transform: rotate(${rotateDeg}deg); display:block;">
+                <circle cx="18" cy="18" r="16" fill="rgba(0,0,0,0.45)" stroke="${col}" stroke-width="1.5"/>
+                <!-- strelka tepaga yo'nalgan, aylanish rotate orqali -->
+                <polygon points="18,4 13,20 18,16 23,20" fill="${col}"/>
+                <line x1="18" y1="16" x2="18" y2="28" stroke="${col}" stroke-width="2" stroke-linecap="round"/>
+            </svg>`;
+        }
+
+        function drawMapMarkers(mapData) {
+            if (!map) return;
+            mapLayers.forEach(l => map.removeLayer(l));
+            mapLayers = [];
+
+            mapData.forEach(st => {
+                const wx = getWeather(st.pwv, st.dpwv, st.rh, st.p, st.dp, st.dt);
+                const deg = st.wind_deg || 0;
+                const spd = st.wind_spd || 0;
+
+                // -- Ob-havo ikonkasi --
+                const wxHtml = `
+                    <div class="wx-wrap">
+                        <div class="wx-icon">${wx.icon}</div>
+                        <div class="wx-label">${st.station}</div>
+                        <div class="wx-pwv">🌧️ ${wx.prob}%</div>
+                    </div>`;
+
+                const wxIcon = L.divIcon({ html: wxHtml, className: '', iconSize: [60, 60], iconAnchor: [30, 58] });
+                const wxMarker = L.marker([st.lat, st.lon], { icon: wxIcon }).addTo(map);
+                
+                // -- Ob-havo hududi doirasi (Radius) --
+                let radius = 30000; // 30 km 
+                let circleColor = wx.prob >= 75 ? '#ff4444' : (wx.prob >= 50 ? '#4da6ff' : (wx.prob >= 25 ? '#aaaaaa' : '#FFD700'));
+                const areaCircle = L.circle([st.lat, st.lon], {
+                    color: circleColor,
+                    fillColor: circleColor,
+                    fillOpacity: 0.15,
+                    radius: radius,
+                    weight: 2
+                }).addTo(map);
+                mapLayers.push(areaCircle);
+
+                // Shamol yo'nalishi so'zda
+                const windDirNames = ['Shimoldan', 'Sh-Sharqdan', 'Sharqdan', 'J-Sharqdan', 'Janubdan', "J-G'arbdan", "G'arbdan", "Sh-G'arbdan"];
+                const dirName = windDirNames[Math.round(((deg % 360 + 360) % 360) / 45) % 8];
+
+                wxMarker.bindPopup(`
+                    <div style="font-size:14px; min-width:185px;">
+                        <b style="font-size:17px;">${wx.icon} ${st.station}</b>
+                        <hr style="margin:5px 0;">
+                        🌧️ Yog'in ehtimoli: <b style="color:${wx.prob > 60 ? '#ff4444' : '#28a745'}">${wx.prob}%</b><br>
+                        🗜️ Bosim: <b>${st.p !== undefined ? st.p : '--'} hPa</b> (${st.dp > 0 ? '+' + st.dp : st.dp})<br>
+                        💧 Suv bug'i: <b style="color:#00bcd4;">${st.pwv > 0 ? st.pwv : '--'} mm</b><br>
+                        🌡️ Harorat: <b style="color:#e53935;">${st.t !== undefined ? st.t : '--'} °C</b> (${st.dt > 0 ? '+' + st.dt : st.dt})<br>
+                        💨 Shamol: <b style="color:#26C6DA;">${spd} m/s</b> (${dirName})<br>
+                        <hr style="margin:5px 0;">
+                        🔍 Holat: <b style="color:${wx.color};">${wx.label}</b>
+                    </div>
+                `);
+                mapLayers.push(wxMarker);
+
+                // -- Shamol strelkasi (biroz siljitilgan) --
+                const windHtml = `
+                    <div class="wind-wrap">
+                        ${windArrowSVG(deg, spd)}
+                        <div class="wind-label">${spd} m/s</div>
+                    </div>`;
+
+                const windIcon = L.divIcon({ html: windHtml, className: '', iconSize: [40, 52], iconAnchor: [20, 10] });
+                // ob-havo markeridan biroz yuqoriga va o'ngga
+                const windLatLng = [st.lat + 0.25, st.lon + 0.35];
+                const windMarker = L.marker(windLatLng, { icon: windIcon }).addTo(map);
+                windMarker.bindPopup(`<b>${st.station}</b> shamol: ${spd} m/s — ${dirName}`);
+                mapLayers.push(windMarker);
+            });
+        }
+
+        /* ---------- Ma'lumotlarni yuklash ---------- */
+        function fetchData() {
+            const st = document.getElementById('stationSelect').value;
+            const y = document.getElementById('yearSelect').value;
+            const m = document.getElementById('monthSelect').value;
+            const d = document.getElementById('daySelect').value;
+
+            let url = `/api/gnss_data?station=${st}&year=${y}`;
+            if (m) url += `&month=${m}`;
+            if (d) url += `&day=${d}`;
+            
+            const h = document.getElementById('hourSelect').value;
+            if (h) url += `&hour=${h}`;
+
+            const btn = document.getElementById('analyzeBtn');
+            const spinner = document.getElementById('loadingSpinner');
+            if (btn) btn.disabled = true;
+            if (spinner) spinner.style.display = 'inline-block';
+
+            fetch(url).then(res => res.json()).then(data => {
+                if (data.error) {
+                    document.getElementById('errorMessage').style.display = 'block';
+                    document.getElementById('metricsArea').style.display = 'none';
+                    document.getElementById('chartsArea').style.display = 'none';
+                    document.getElementById('alertBanner').style.display = 'none';
+                    return;
+                }
+
+                document.getElementById('errorMessage').style.display = 'none';
+                document.getElementById('metricsArea').style.display = 'flex';
+                document.getElementById('chartsArea').style.display = 'grid';
+
+                // Ogohlantirishlar
+                const alertBanner = document.getElementById('alertBanner');
+                if (data.alerts && data.alerts.length > 0) {
+                    document.getElementById('alertText').innerText = data.alerts.join(" | ");
+                    alertBanner.style.display = 'block';
+                } else {
+                    alertBanner.style.display = 'none';
+                }
+
+                // Sun'iy yomg'ir ogohlantirishlari
+                const seedingBanner = document.getElementById('seedingBanner');
+                if (data.seeding_alerts && data.seeding_alerts.length > 0) {
+                    document.getElementById('seedingText').innerText = data.seeding_alerts.join(" | ");
+                    seedingBanner.style.display = 'block';
+                } else {
+                    seedingBanner.style.display = 'none';
+                }
+
+                // Sun'iy yomg'ir tahlili (Modal uchun)
+                if (data.seeding_analysis) {
+                    const formatList = (arr) => arr.length > 0 ? arr.map(x => `<span style="background:#334; padding:2px 6px; border-radius:4px; font-size:13px; display:inline-block; margin-right:5px; margin-top:5px;">${x}</span>`).join('') : '<span style="color:#888; font-size:13px; font-style:italic;">Mos keladigan vaqt topilmadi</span>';
+                    
+                    document.getElementById('seedTiming').innerHTML = formatList(data.seeding_analysis.timing);
+                    document.getElementById('seedConvective').innerHTML = formatList(data.seeding_analysis.convective);
+                    document.getElementById('seedDry').innerHTML = formatList(data.seeding_analysis.dry_clouds);
+                    document.getElementById('seedEval').innerHTML = formatList(data.seeding_analysis.evaluation);
+                }
+
+                // Sun'iy yomg'ir tahlili (Modal uchun)
+                if (data.seeding_analysis) {
+                    const formatList = (arr) => arr.length > 0 ? arr.map(x => `<span style="background:#334; padding:2px 6px; border-radius:4px; font-size:13px; display:inline-block; margin-right:5px; margin-top:5px; border: 1px solid #556;">${x}</span>`).join('') : '<span style="color:#888; font-size:13px; font-style:italic;">Mos keladigan vaqt topilmadi</span>';
+                    
+                    document.getElementById('seedTiming').innerHTML = formatList(data.seeding_analysis.timing);
+                    document.getElementById('seedTrajectory').innerHTML = formatList(data.seeding_analysis.trajectory);
+                    document.getElementById('seedConvective').innerHTML = formatList(data.seeding_analysis.convective);
+                    document.getElementById('seedDry').innerHTML = formatList(data.seeding_analysis.dry_clouds);
+                    document.getElementById('seedEval').innerHTML = formatList(data.seeding_analysis.evaluation);
+                }
+
+                // Xarita va 3D Yer Shari
+                lastMapData = data.map || [];
+                updateGlobeData(lastMapData);
+                if (map) drawMapMarkers(lastMapData);
+
+                // Tanlangan stansiyaga 3D kamerani siljitish
+                if (globe && data.station_name && ALL_STATION_COORDS[data.station_name]) {
+                    const stCoord = ALL_STATION_COORDS[data.station_name];
+                    globe.pointOfView({ lat: stCoord.lat, lng: stCoord.lon, altitude: 1.25 }, 1000);
+                }
+
+                // Metrikalar
+                if (data.averages) {
+                    const v = (val, unit) => (val !== "--" ? val : "--") + ' ' + unit;
+
+                    let prob = "--";
+                    if (data.map) {
+                        let st_data = data.map.find(m => m.station === st);
+                        if (st_data) {
+                            let wx = getWeather(st_data.pwv, st_data.dpwv, st_data.rh, st_data.p, st_data.dp, st_data.dt);
+                            prob = wx.prob;
+                        }
+                    }
+
+                    document.getElementById('avg_prob').innerText = prob !== "--" ? prob + ' %' : "--";
+                    document.getElementById('avg_p').innerText = v(data.averages.p, 'hPa');
+                    document.getElementById('avg_pwv').innerText = v(data.averages.pwv, 'mm');
+                    document.getElementById('avg_ztd').innerText = v(data.averages.ztd, 'm');
+                    document.getElementById('avg_zhd').innerText = v(data.averages.zhd, 'm');
+                    document.getElementById('avg_zwd').innerText = v(data.averages.zwd, 'm');
+                    document.getElementById('avg_t').innerText = v(data.averages.t, '°C');
+                    document.getElementById('avg_rh').innerText = v(data.averages.rh, '%');
+                    document.getElementById('avg_w_spd').innerText = v(data.averages.w_spd, 'm/s');
+
+                    let deg = data.averages.w_deg;
+                    if (deg !== "--") {
+                        const dirs = ['Shimol', 'Sh-Sharq', 'Sharq', 'J-Sharq', 'Janub', "J-G'arb", "G'arb", "Sh-G'arb"];
+                        document.getElementById('avg_w_deg').innerText =
+                            `${deg}° (${dirs[Math.round(((deg % 360 + 360) % 360) / 45) % 8]})`;
+                    } else {
+                        document.getElementById('avg_w_deg').innerText = "--";
+                    }
+                }
+
+                let timeStr = `${y}-yil`;
+                if (m) timeStr += ` ${m}-oy`;
+                if (d) timeStr += ` ${d}-kun`;
+                if (h) timeStr += ` ${h}:00`;
+                let fullTitle = `(${data.station_name} | ${timeStr})`;
+
+                // Grafiklar (shamol grafigi olib tashlandi – xaritada ko'rinadi)
+                createChart('pwvChart', `Suv bug'i - PWV (mm) ${fullTitle}`, 'PWV', data.pwv, data.labels, '#008080');
+                createMultiChart('delayChart', `Troposfera Kechikishlari ${fullTitle}`, [
+                    { label: 'ZTD', data: data.ztd, backgroundColor: '#80008088', borderColor: '#800080', borderWidth: 1 },
+                    { label: 'ZHD', data: data.zhd, backgroundColor: '#A52A2A88', borderColor: '#A52A2A', borderWidth: 1 },
+                    { label: 'ZWD', data: data.zwd, backgroundColor: '#00008088', borderColor: '#000080', borderWidth: 1 }
+                ], data.labels);
+                createChart('tChart', `Harorat (°C) ${fullTitle}`, 'Harorat', data.t, data.labels, '#DC143C');
+                createChart('pChart', `Bosim (hPa) ${fullTitle}`, 'Bosim', data.p, data.labels, '#FF8C00');
+                createChart('rhChart', `Namlik (%) ${fullTitle}`, 'Namlik', data.rh, data.labels, '#1E90FF');
+
+                // Soatlik panelni yuklash
+                fetchHourly();
+            }).catch(e => {
+                console.error("Xatolik:", e);
+                document.getElementById('errorMessage').style.display = 'block';
+            }).finally(() => {
+                const btn = document.getElementById('analyzeBtn');
+                const spinner = document.getElementById('loadingSpinner');
+                if (btn) btn.disabled = false;
+                if (spinner) spinner.style.display = 'none';
+            });
+        }
+
+        /* ===== AccuWeather soatlik panel ===== */
+        function fetchHourly() {
+            const st = document.getElementById('stationSelect').value;
+            const y = document.getElementById('yearSelect').value;
+            const m = document.getElementById('monthSelect').value;
+            const d = document.getElementById('daySelect').value;
+            let url = `/api/gnss_hourly?station=${st}&year=${y}`;
+            if (m) url += `&month=${m}`;
+            if (d) url += `&day=${d}`;
+            fetch(url).then(r => r.json()).then(data => {
+                if (data.error || !data.hours || !data.hours.length) { document.getElementById('hourlySection').style.display = 'none'; return; }
+                document.getElementById('hourlySection').style.display = 'block';
+                document.getElementById('hourlyDateLabel').textContent = data.hours[0].date + ' | ' + data.station;
+                
+                if (data.lat && data.lon) {
+                    const meteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${data.lat}&longitude=${data.lon}&hourly=precipitation_probability&timezone=auto`;
+                    fetch(meteoUrl).then(mr => mr.json()).then(m_data => {
+                        if (m_data && m_data.hourly && m_data.hourly.time) {
+                            let probMap = {};
+                            m_data.hourly.time.forEach((t, i) => {
+                                let dtPart = t.split('T');
+                                probMap[`${dtPart[0]} ${dtPart[1]}`] = m_data.hourly.precipitation_probability[i];
+                            });
+                            data.hours.forEach(h => {
+                                let key = `${h.date} ${h.time}`;
+                                if (probMap[key] !== undefined) {
+                                    h.prob = Math.max(h.prob, probMap[key]);
+                                }
+                            });
+                        }
+                        renderHourlyCards(data.hours);
+                    }).catch(() => renderHourlyCards(data.hours));
+                } else {
+                    renderHourlyCards(data.hours);
+                }
+            });
+        }
+
+        function getHourIcon(prob, rh) {
+            if (prob >= 75) return '⛈️';
+            if (prob >= 50) return '🌧️';
+            if (prob >= 25 || rh > 55) return '🌤️';
+            return '☀️';
+        }
+        function rainBarColor(p) { if (p >= 70) return '#ef4444'; if (p >= 40) return '#f59e0b'; return '#3b82f6'; }
+
+        function renderHourlyCards(hours) {
+            const wrap = document.getElementById('hourlyScroll');
+            let html = '';
+            const now = new Date();
+            const curH = now.getHours();
+            hours.forEach((h, i) => {
+                const hr = parseInt(h.time.split(':')[0]);
+                const isNow = (hr === curH) ? 'now' : '';
+                const icon = getHourIcon(h.prob, h.rh);
+                const windDirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+                const dIdx = Math.round(((h.w_deg % 360 + 360) % 360) / 45) % 8;
+                const rotDeg = (h.w_deg + 180) % 360;
+                const wCol = h.w_spd > 10 ? '#ef4444' : h.w_spd > 5 ? '#fbbf24' : '#38bdf8';
+
+                let seedingBadge = h.is_seeding ? `<div style="position:absolute; top:-10px; right:-10px; background:#ef4444; color:#fff; font-size:10px; padding:2px 5px; border-radius:10px; font-weight:bold; box-shadow:0 0 5px rgba(239,68,68,0.8); z-index:10; border: 1px solid white;" title="Modda sepish uchun eng qulay vaqt!">🚀 SEEDING</div>` : '';
+
+                html += `
+                <div class="hourly-card ${isNow}" style="min-width: 80px; padding: 12px 10px; position:relative;">
+                    ${seedingBadge}
+                    <div class="hc-time">${h.time}</div>
+                    <div class="hc-icon">${icon}</div>
+                    <div class="hc-temp">${h.t}°</div>
+                    <div class="hc-rain-wrap">
+                        <div class="hc-rain-bar-bg"><div class="hc-rain-bar" style="width:${h.prob}%;background:${rainBarColor(h.prob)}"></div></div>
+                        <div class="hc-rain-txt">🌧${h.prob}%</div>
+                    </div>
+                    <div class="hc-divider"></div>
+                    <div class="hc-wind">
+                        <svg class="hc-wind-arrow" viewBox="0 0 14 14" style="transform:rotate(${rotDeg}deg)">
+                            <polygon points="7,1 4,10 7,8 10,10" fill="${wCol}"/>
+                        </svg>
+                        <span class="hc-wind-spd">${h.w_spd}</span>
+                    </div>
+                    <div class="hc-rh">💧${h.rh}%</div>
+                    <div class="hc-pwv">PWV ${h.pwv}</div>
+                </div>`;
+            });
+            wrap.innerHTML = html;
+            // Hozirgi soatga scroll
+            const nowCard = wrap.querySelector('.hourly-card.now');
+            if (nowCard) nowCard.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        }
+
+        function updateDays() {
+            const year = parseInt(document.getElementById('yearSelect').value) || 2026;
+            const month = parseInt(document.getElementById('monthSelect').value) || 5;
+            const daysInMonth = new Date(year, month, 0).getDate();
+            const daySelect = document.getElementById('daySelect');
+            const currentDay = daySelect.value;
+            daySelect.innerHTML = '<option value="">Barcha kunlar</option>';
+            for (let i = 1; i <= daysInMonth; i++) {
+                daySelect.innerHTML += `<option value="${i}">${i}-kun</option>`;
+            }
+            if (currentDay && currentDay <= daysInMonth) daySelect.value = currentDay;
+        }
+
+        document.getElementById('stationSelect').addEventListener('change', fetchData);
+        document.getElementById('yearSelect').addEventListener('change', () => { updateDays(); fetchData(); });
+        document.getElementById('monthSelect').addEventListener('change', () => { updateDays(); fetchData(); });
+        document.getElementById('daySelect').addEventListener('change', fetchData);
+        document.getElementById('hourSelect').addEventListener('change', fetchData);
+
+        window.onload = () => {
+            initGlobe();
+            const now = new Date();
+            // Bugungi sana avtomatik tanlanadi
+            const curYear  = now.getFullYear();
+            const curMonth = now.getMonth() + 1; // 1-12
+            const curDay   = now.getDate();
+
+            const yearSel  = document.getElementById('yearSelect');
+            const monthSel = document.getElementById('monthSelect');
+
+            // Yil - agar topilmasa eng oxirgi optionni tanlaydi
+            if ([...yearSel.options].some(o => o.value == curYear)) {
+                yearSel.value = String(curYear);
+            } else {
+                yearSel.selectedIndex = yearSel.options.length - 1;
+            }
+
+            // Oy
+            monthSel.value = String(curMonth);
+            updateDays();
+
+            // Kun
+            const daySel = document.getElementById('daySelect');
+            if ([...daySel.options].some(o => o.value == curDay)) {
+                daySel.value = String(curDay);
+            }
+
+            fetchData();
+        };
+    </script>
+</body>
+
+</html>

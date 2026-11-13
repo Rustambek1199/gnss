@@ -1,0 +1,428 @@
+﻿<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chang-To'zon Monitoring | Buxoro & Navoiy</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=5">
+    <style>
+        /* Filter Bar */
+        .filter-bar {
+            background: rgba(15,23,42,0.95);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding: 14px 2rem;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            position: sticky;
+            top: 0;
+            z-index: 200;
+        }
+        .filter-bar label {
+            font-size: 12px;
+            color: #64748b;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: block;
+            margin-bottom: 4px;
+        }
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+        }
+        .filter-bar select {
+            background: rgba(255,255,255,0.07);
+            border: 1px solid rgba(255,255,255,0.15);
+            color: #e2e8f0;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            outline: none;
+            cursor: pointer;
+            transition: border 0.2s;
+        }
+        .filter-bar select:hover, .filter-bar select:focus {
+            border-color: #3b82f6;
+        }
+        .filter-bar select option {
+            background: #1e293b;
+            color: #e2e8f0;
+        }
+        .btn-analyze {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            color: white;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(59,130,246,0.4);
+            align-self: flex-end;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-analyze:hover { background: linear-gradient(135deg,#2563eb,#1e40af); transform: translateY(-1px); }
+        .btn-analyze:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+        .filter-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: #94a3b8;
+            margin-right: 4px;
+            align-self: flex-end;
+            padding-bottom: 10px;
+        }
+        .gnss-link-btn {
+            margin-left: auto;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 18px;
+            background: linear-gradient(135deg,#1e3c72,#2a5298);
+            color: #fff;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 13px;
+            box-shadow: 0 4px 15px rgba(30,60,114,0.4);
+            transition: all 0.3s;
+            align-self: flex-end;
+        }
+        .gnss-link-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(30,60,114,0.6); }
+
+        /* Section headers */
+        .section-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-left: 3px solid #3b82f6;
+            padding-left: 10px;
+        }
+        /* Loading overlay */
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 999;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .loading-overlay.active { display: flex; }
+        .loading-overlay .spinner {
+            width: 50px; height: 50px;
+            border: 4px solid rgba(255,255,255,0.1);
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        .loading-overlay p { color: #fff; font-size: 16px; font-weight: 600; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Charts layout */
+        .charts-2col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        @media (max-width: 900px) { .charts-2col { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+
+<!-- Loading Overlay -->
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="spinner"></div>
+    <p>Ma'lumotlar yuklanmoqda...</p>
+</div>
+
+<!-- Sidebar -->
+<nav class="sidebar">
+    <div class="logo">
+        <img src="https://cdn-icons-png.flaticon.com/512/3093/3093390.png" alt="Logo">
+        <div>
+            <h2>CHANG-TO'ZON</h2>
+            <span class="logo-sub">MONITORING TIZIMI</span>
+        </div>
+    </div>
+    <div class="nav-section-label">Bo'limlar</div>
+    <ul class="nav-links" id="sectionNav">
+        <li onclick="scrollToSection('sec-metrics')">
+            <span class="nav-icon">📊</span> Ko'rsatkichlar
+        </li>
+        <li onclick="scrollToSection('sec-map')">
+            <span class="nav-icon">🗺️</span> Xavf Xaritasi
+        </li>
+        <li onclick="scrollToSection('sec-timeseries')">
+            <span class="nav-icon">📈</span> Vaqt Qatori
+        </li>
+        <li onclick="scrollToSection('sec-wind')">
+            <span class="nav-icon">🌪️</span> Shamol Tahlili
+        </li>
+        <li onclick="scrollToSection('sec-ai')">
+            <span class="nav-icon">🤖</span> AI Bashorat
+        </li>
+        <li onclick="scrollToSection('sec-sim')">
+            <span class="nav-icon">🏜️</span> Simulyatsiya
+        </li>
+    </ul>
+    <a href="/gnss" class="gnss-nav-btn">
+        🛰️ Uz-GNSS Tizimi
+        <span style="display:block;font-size:11px;font-weight:500;opacity:0.75;margin-top:3px;">Atmosfera diagnostikasi</span>
+    </a>
+    <div class="info-box">
+        <span class="live-dot"></span> Real vaqt monitoring<br>
+        Buxoro &amp; Navoiy viloyatlari<br>
+        ERA5 + GNSS 16 stantsiya
+    </div>
+</nav>
+
+<!-- Main Content -->
+<main class="main-content" style="padding-top: 0;">
+
+    <!-- Sticky Filter Bar -->
+    <div class="filter-bar">
+        <span class="filter-title">🔍 Filtr:</span>
+
+        <div class="filter-group">
+            <label for="sel-region">Hudud</label>
+            <select id="sel-region">
+                <option value="Buxoro">🏜️ Buxoro</option>
+                <option value="Navoiy" selected>🌵 Navoiy</option>
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <label for="sel-year">Yil</label>
+            <select id="sel-year">
+                <option value="">Barcha yillar</option>
+                <option value="2026">2026</option>
+                <option value="2025">2025</option>
+                <option value="2024">2024</option>
+                <option value="2023">2023</option>
+                <option value="2022">2022</option>
+                <option value="2021">2021</option>
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <label for="sel-month">Oy</label>
+            <select id="sel-month">
+                <option value="">Barcha oylar</option>
+                <option value="1">Yanvar</option>
+                <option value="2">Fevral</option>
+                <option value="3">Mart</option>
+                <option value="4">Aprel</option>
+                <option value="5">May</option>
+                <option value="6">Iyun</option>
+                <option value="7">Iyul</option>
+                <option value="8">Avgust</option>
+                <option value="9">Sentabr</option>
+                <option value="10">Oktabr</option>
+                <option value="11">Noyabr</option>
+                <option value="12">Dekabr</option>
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <label for="sel-day">Kun</label>
+            <select id="sel-day">
+                <option value="">Barcha kunlar</option>
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <label for="sel-startdate">Boshlanish sanasi</label>
+            <select id="sel-startdate" style="font-size:13px;">
+                <option value="">-- Boshlanish --</option>
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <label for="sel-enddate">Tugash sanasi</label>
+            <select id="sel-enddate" style="font-size:13px;">
+                <option value="">-- Tugash --</option>
+            </select>
+        </div>
+
+        <button class="btn-analyze" id="btn-analyze" onclick="fetchData()">
+            <span id="analyzeSpinner" style="display:none;">⏳</span>
+            🔎 Tahlil qilish
+        </button>
+
+        <a href="/gnss" class="gnss-link-btn">
+            🛰️ Uz-GNSS →
+        </a>
+    </div>
+
+    <div style="padding: 2rem 3rem;">
+        <header style="margin-bottom:1.5rem; padding-top: 1.5rem;">
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+                <span class="live-dot"></span>
+                <span style="font-size:0.75rem; color:#10b981; font-weight:700; letter-spacing:1px; text-transform:uppercase;">Real vaqt monitoring</span>
+            </div>
+            <h1>Yaylovlar Degradatsiyasi va Chang Bo'ronlari Dushbordi</h1>
+            <p id="current-filter-label" style="color:#64748b; font-size:0.88rem; margin-top:6px;">
+                Yuklanmoqda...
+            </p>
+        </header>
+
+        <!-- Section 1: Metrics -->
+        <div id="sec-metrics" style="margin-bottom:2rem;">
+            <div class="section-title">📊 Asosiy Ko'rsatkichlar</div>
+            <div class="metrics-grid">
+                <div class="metric-card card-blue">
+                    <span class="metric-icon">💨</span>
+                    <div class="metric-title">O'rtacha Shamol</div>
+                    <div class="metric-value" id="val-wind" style="color:#60a5fa;">-</div>
+                    <div class="metric-delta" id="delta-wind">m/s</div>
+                </div>
+                <div class="metric-card card-cyan">
+                    <span class="metric-icon">💧</span>
+                    <div class="metric-title">Tuproq Namligi</div>
+                    <div class="metric-value" id="val-soil" style="color:#22d3ee;">-</div>
+                    <div class="metric-delta" id="delta-soil">m³/m³</div>
+                </div>
+                <div class="metric-card card-green">
+                    <span class="metric-icon">🌿</span>
+                    <div class="metric-title">NDVI Indeksi</div>
+                    <div class="metric-value" id="val-ndvi" style="color:#34d399;">-</div>
+                    <div class="metric-delta" id="delta-ndvi">O'simlik qoplami</div>
+                </div>
+                <div class="metric-card card-danger">
+                    <span class="metric-icon">⚠️</span>
+                    <div class="metric-title">Xavf Indeksi</div>
+                    <div class="metric-value" id="val-risk" style="color:#f87171;">-</div>
+                    <div class="metric-delta" id="delta-risk">/ 100</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 2: Map -->
+        <div id="sec-map" style="margin-bottom:2rem;">
+            <div class="section-title">🗺️ Interaktiv Xavf Xaritasi</div>
+            <div class="glass-panel map-container" style="height:480px; padding:0; position:relative; overflow:hidden;">
+                <!-- Rejim almashtirish -->
+                <div style="position:absolute; top:12px; left:14px; z-index:1000; display:flex; align-items:center; gap:6px; background:rgba(15,23,42,0.9); backdrop-filter:blur(10px); padding:4px 8px; border-radius:24px; border:1px solid rgba(255,255,255,0.15);">
+                    <button id="btnView3D_idx" onclick="switchIndexMapView('3d')" style="padding:5px 12px; font-size:12px; font-weight:600; border-radius:18px; border:none; background:linear-gradient(135deg,#3b82f6,#1d4ed8); color:#fff; cursor:pointer;">
+                        🌐 3D Yer Shari
+                    </button>
+                    <button id="btnView2D_idx" onclick="switchIndexMapView('2d')" style="padding:5px 12px; font-size:12px; font-weight:600; border-radius:18px; border:none; background:transparent; color:#94a3b8; cursor:pointer;">
+                        🗺️ 2D Xarita
+                    </button>
+                    <button onclick="resetIndexGlobeFocus()" style="padding:5px 10px; font-size:11px; border-radius:14px; border:1px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.06); color:#cbd5e1; cursor:pointer;">
+                        🎯 Markaz
+                    </button>
+                    <button onclick="toggleIndexGlobeRotation()" style="padding:5px 10px; font-size:11px; border-radius:14px; border:1px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.06); color:#cbd5e1; cursor:pointer;">
+                        🔄 Aylanish: <span id="rotateStatus_idx">Yoqiq</span>
+                    </button>
+                </div>
+
+                <div id="globe" style="height:100%;width:100%;border-radius:15px;position:absolute;inset:0;"></div>
+                <div id="map" style="height:100%;width:100%;border-radius:15px;position:absolute;inset:0;display:none;"></div>
+            </div>
+        </div>
+
+        <!-- Section 3: Timeseries -->
+        <div id="sec-timeseries" style="margin-bottom:2rem;">
+            <div class="section-title">📈 Vaqt Qatori Tahlili</div>
+            <div class="charts-2col">
+                <div class="glass-panel">
+                    <div class="section-title" style="font-size:1rem;">NDVI va Tuproq Namligi</div>
+                    <div id="chart-timeseries" class="chart-wrapper"></div>
+                </div>
+                <div class="glass-panel">
+                    <div class="section-title" style="font-size:1rem;">⚠️ Xavf Indeksi</div>
+                    <div id="chart-risk" class="chart-wrapper"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 4: Wind Analysis -->
+        <div id="sec-wind" style="margin-bottom:2rem;">
+            <div class="section-title">🌪️ Shamol Tahlili</div>
+            <div class="charts-2col">
+                <div class="glass-panel">
+                    <div class="section-title" style="font-size:1rem;">Oylar bo'yicha Xavfli Kunlar</div>
+                    <div id="chart-danger-months" class="chart-wrapper"></div>
+                </div>
+                <div class="glass-panel">
+                    <div class="section-title" style="font-size:1rem;">🌹 Shamol Atirguli</div>
+                    <div id="chart-wind-rose" class="chart-wrapper"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 5: AI -->
+        <div id="sec-ai" style="margin-bottom:2rem;">
+            <div class="section-title">🤖 AI Bashorati</div>
+            <div class="charts-2col">
+                <div class="glass-panel">
+                    <div class="section-title" style="font-size:1rem;">Datchiklar Ahamiyati</div>
+                    <div id="chart-importance" class="chart-wrapper"></div>
+                </div>
+                <div class="glass-panel">
+                    <div class="section-title" style="font-size:1rem;">Jonli Bashorat</div>
+                    <div class="controls-grid">
+                        <label>Shamol tezligi (m/s): <span id="lbl-ws">7.8</span></label>
+                        <input type="range" id="inp-ws" min="0" max="30" step="0.1" value="7.8">
+                        <label>Shamol yo'nalishi (°): <span id="lbl-wd">315</span></label>
+                        <input type="range" id="inp-wd" min="0" max="360" step="1" value="315">
+                        <label>Tuproq namligi: <span id="lbl-sm">0.11</span></label>
+                        <input type="range" id="inp-sm" min="0" max="1" step="0.01" value="0.11">
+                        <label>PWV (mm): <span id="lbl-pwv">9.5</span></label>
+                        <input type="range" id="inp-pwv" min="1" max="50" step="0.5" value="9.5">
+                        <label>ZTD (m): <span id="lbl-ztd">2.35</span></label>
+                        <input type="range" id="inp-ztd" min="2" max="3" step="0.01" value="2.35">
+                        <button id="btn-predict" class="btn-primary">🔍 Bashorat qilish</button>
+                    </div>
+                    <div id="prediction-result" class="prediction-box">
+                        <h2 id="pred-title" style="color:#a0aec0;">Natija kutilmoqda...</h2>
+                        <div id="chart-gauge" class="chart-wrapper" style="height:220px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 6: Simulation -->
+        <div id="sec-sim" style="margin-bottom:2rem;">
+            <div class="section-title">🏜️ Yashil To'siq Simulyatsiyasi</div>
+            <div class="glass-panel">
+                <p style="color:#a0aec0; margin-bottom:1rem;">💡 Model chekli ayirmalar usulida difuziya-adveksiya tenglamasini yechadi — yashil to'siqlar qum ko'chishini qanday kamaytirishi ko'rsatiladi.</p>
+                <div id="sim-loading" class="loading-spinner" style="display:none; margin: 10px 0;">
+                    <div class="spinner"></div>
+                    <p style="color:#60a5fa; font-weight:600;">Simulyatsiya hisoblanmoqda...</p>
+                </div>
+                <div class="sim-result-container" style="text-align:center;">
+                    <img id="sim-image" src="{{ url_for('static', filename='img/green_barrier_sim.png') }}" alt="Yashil to'siq simulyatsiyasi natijasi" style="max-width:100%; border-radius:12px; display:inline-block; box-shadow:0 6px 25px rgba(0,0,0,0.5); border:1px solid rgba(59,130,246,0.25);">
+                </div>
+                <div style="margin-top:1.2rem; display:flex; justify-content:center;">
+                    <button id="btn-simulate" class="btn-primary" style="display:inline-flex; align-items:center; gap:6px;">🔄 Qayta hisoblash</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</main>
+
+<!-- Scripts -->
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="{{ url_for('static', filename='js/globe.gl.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
